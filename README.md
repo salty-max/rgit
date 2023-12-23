@@ -4,7 +4,7 @@ A cheap git clone written in Rust
 
 ## Features
 
-- [ ] Initialize the .git repository
+- [x] Initialize the .git repository
 - [ ] Read a blob object
 - [ ] Create a blob object
 - [ ] Read a tree object
