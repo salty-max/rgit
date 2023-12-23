@@ -1,28 +1,41 @@
-use std::{fs, io::Read};
+use std::{
+    fs::read,
+    io::{stdout, Read, Write},
+    path::PathBuf,
+    process::exit,
+};
 
 use flate2::read::ZlibDecoder;
 
-pub fn read_blob(hash: &str) {
-    // The first two charactes of the hash are the folder name
-    let folder_name = &hash[0..2];
-    // The rest is the file name
-    let file_name = &hash[2..];
-    let path = format!(".git/objects/{folder_name}/{file_name}");
+use crate::error::{ExitCode, ERROR_ENVIRONMENT, ERROR_FILESYSTEM, SUCCESS};
 
-    let mut object = fs::File::open(&*path).unwrap();
-    let mut content: Vec<u8> = vec![];
-    let mut extracted_content = String::new();
+pub fn read_blob(path: PathBuf, hash: &str) -> Result<String, (&'static str, ExitCode)> {
+    // First two characters of the hash are the folder name, rest is the file name
+    let (head, tail) = hash.split_at(2);
+    let object_path = path.join(".git/objects").join(head).join(tail);
 
-    object.read_to_end(&mut content).unwrap();
+    if object_path.exists() {
+        let file = read(object_path).map_err(|_| ("Could not read file.", ERROR_FILESYSTEM))?;
 
-    let mut decoder = ZlibDecoder::new(content.as_slice());
+        let mut decoder = ZlibDecoder::new(file.as_slice());
+        let mut buffer: Vec<u8> = Vec::new();
 
-    match decoder.read_to_string(&mut extracted_content) {
-        Ok(_) => {
-            println!("{}", extracted_content);
+        decoder
+            .read_to_end(&mut buffer)
+            .map_err(|_| ("Could not read decoded blob to buffer.", ERROR_FILESYSTEM))?;
+
+        if let Some(position) = &buffer.iter().position(|byte| byte == &0) {
+            buffer.drain(..position + 1);
         }
-        Err(e) => {
-            eprintln!("Error reading file {path}: {}", e);
-        }
+
+        let mut io = stdout();
+        io.write(&buffer)
+            .map_err(|_| ("Could not print to stdout.", ERROR_ENVIRONMENT))?;
+        io.flush()
+            .map_err(|_| ("Could not flush write buffer to stdout.", ERROR_ENVIRONMENT))?;
+
+        exit(SUCCESS)
     }
+
+    Err(("Object does not exist.", ERROR_FILESYSTEM))
 }
